@@ -1,7 +1,8 @@
-const fs = require('fs-extra');
-const globby = require('globby');
-const postcss = require('postcss');
-const postcssScss = require('postcss-scss');
+import fs from 'fs-extra';
+import globby from 'globby';
+import path from 'path';
+import postcss from 'postcss';
+import postcssScss from 'postcss-scss';
 
 const VARIABLES_FILE = 'src/styles/variables.scss'; // Path to the variables file
 const SCSS_FILES_GLOB = 'src/**/*.scss'; // Glob to match all SCSS files
@@ -26,16 +27,23 @@ async function loadColorVariables() {
     return variables;
 }
 
-// Step 2: Add @use directive if needed
-function ensureUseDirective(content) {
-    const useDirective = `@use "styles/variables.scss";`;
+// Step 2: Add @use directive if needed with relative path
+function ensureUseDirective(content, relativePath) {
+    const useDirective = `@use "${relativePath}";`;
     if (!content.includes(useDirective)) {
         return `${useDirective}\n${content}`;
     }
     return content;
 }
 
-// Step 3: Process a single SCSS file
+// Step 3: Calculate the relative path to variables.scss
+function getRelativePath(file) {
+    const fileDir = path.dirname(file);
+    const relativePath = path.relative(fileDir, path.dirname(VARIABLES_FILE));
+    return path.join(relativePath, path.basename(VARIABLES_FILE)).replace(/\\/g, '/'); // Ensure forward slashes
+}
+
+// Step 4: Process a single SCSS file
 async function processScssFile(file, colorVariables) {
     let content = await fs.readFile(file, 'utf-8');
     const root = postcss.parse(content, { parser: postcssScss });
@@ -55,13 +63,14 @@ async function processScssFile(file, colorVariables) {
     });
 
     if (updated) {
-        content = ensureUseDirective(root.toString());
+        const relativePath = getRelativePath(file);
+        content = ensureUseDirective(root.toString(), relativePath);
         await fs.writeFile(file, content);
         console.log(`Updated: ${file}`);
     }
 }
 
-// Step 4: Process all SCSS files
+// Step 5: Process all SCSS files
 async function processAllScssFiles() {
     const colorVariables = await loadColorVariables();
     const files = await globby(SCSS_FILES_GLOB);
